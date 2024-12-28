@@ -15,6 +15,8 @@ from keras.layers import Input
 from keras.layers import Dense
 from keras.layers.merging import concatenate
 
+import augly.audio as audaugs
+
 
 logger = logging.getLogger('yaer')
 
@@ -978,7 +980,8 @@ class DeepFusionFeatureLevel_m7(DeepFusionFeatureLevelBase):
                  training_reshape=False,
                  set_sample_weights=True,
                  feature_scaling=True,
-                 dropout_rate=0.0):
+                 dropout_rate=0.0,
+                 merging_operation=None):
         ''' Create network instance. '''
         super().__init__(batch_size,
                          n_epochs,
@@ -988,6 +991,7 @@ class DeepFusionFeatureLevel_m7(DeepFusionFeatureLevelBase):
         self.input_size_acc = input_size_acc
         self.input_size_gyr = input_size_gyr
         self.input_size_mag = input_size_mag
+        self.merging_operation = merging_operation
 
         # Acc model
         acc_input = Input(shape=input_size_acc)
@@ -1113,9 +1117,14 @@ class DeepFusionFeatureLevel_m7(DeepFusionFeatureLevelBase):
         # Merge models
         # merge input models
         if self.input_size_mag is not None:
-            merge = concatenate([sound_x, acc_x, gyr_x, mag_x])
+            merge = merging_operation([sound_x, acc_x, gyr_x, mag_x])
         else:
-            merge = concatenate([sound_x, acc_x, gyr_x])
+            if self.merging_operation:
+                logger.info('Merging using operation', str(self.merging_operation))
+                merge_1 = self.merging_operation([acc_x, gyr_x])
+                merge = concatenate([sound_x, merge_1])
+            else:
+                merge = concatenate([sound_x, acc_x, gyr_x])
 
         rnn = layers.Bidirectional(layers.GRU(256,
                                               activation=activations.relu,

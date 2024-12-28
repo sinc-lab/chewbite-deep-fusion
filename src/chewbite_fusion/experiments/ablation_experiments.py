@@ -33,9 +33,51 @@ def get_model_B_instance(variable_params):
         set_sample_weights=True,
         feature_scaling=True)
 
+def get_model_B_a_instance(variable_params):
+    return am.DeepFusionAblationB_a(
+        input_size_acc=variable_params['input_size_acc'],
+        output_size=6,
+        n_epochs=1500,
+        batch_size=10,
+        training_reshape=True,
+        set_sample_weights=True,
+        feature_scaling=True)
+
+def get_model_B_b_instance(variable_params):
+    return am.DeepFusionAblationB(
+        input_size_gyr=variable_params['input_size_gyr'],
+        output_size=6,
+        n_epochs=1500,
+        batch_size=10,
+        training_reshape=True,
+        set_sample_weights=True,
+        feature_scaling=True)
+
 def get_model_C_instance(variable_params):
     return am.DeepFusionAblationC(
         input_size_acc=variable_params['input_size_acc'],
+        input_size_gyr=variable_params['input_size_gyr'],
+        input_size_audio=variable_params['input_size_sound'],
+        output_size=6,
+        n_epochs=1500,
+        batch_size=10,
+        training_reshape=True,
+        set_sample_weights=True,
+        feature_scaling=True)
+
+def get_model_C_a_instance(variable_params):
+    return am.DeepFusionAblationC(
+        input_size_acc=variable_params['input_size_acc'],
+        input_size_audio=variable_params['input_size_sound'],
+        output_size=6,
+        n_epochs=1500,
+        batch_size=10,
+        training_reshape=True,
+        set_sample_weights=True,
+        feature_scaling=True)
+
+def get_model_C_b_instance(variable_params):
+    return am.DeepFusionAblationC(
         input_size_gyr=variable_params['input_size_gyr'],
         input_size_audio=variable_params['input_size_sound'],
         output_size=6,
@@ -115,6 +157,53 @@ def ablation_model_B_validation():
                    use_raw_data=True,
                    model_parameters_grid={'input_size_acc': [(None, 30, 3)],
                                           'input_size_gyr': [(None, 30, 3)]})
+
+    e.run()
+    
+@experiment()
+def ablation_model_B_a_validation():
+    """ Experiment with acc head on validation data.
+    """
+    window_width = 0.3
+    window_overlap = 0.5
+    X, y = main(window_width=window_width,
+                window_overlap=window_overlap,
+                include_movement_magnitudes=True,
+                audio_sampling_frequency=6000)
+
+    e = Experiment(get_model_B_a_instance,
+                   ff.FeatureFactory_AllRawData,
+                   X, y,
+                   window_width=window_width,
+                   window_overlap=window_overlap,
+                   name='ablation_model_B_a_validation',
+                   manage_sequences=True,
+                   use_raw_data=True,
+                   model_parameters_grid={'input_size_acc': [(None, 30, 3)]})
+
+    e.run()
+
+
+@experiment()
+def ablation_model_B_b_validation():
+    """ Experiment with gyr head on validation data.
+    """
+    window_width = 0.3
+    window_overlap = 0.5
+    X, y = main(window_width=window_width,
+                window_overlap=window_overlap,
+                include_movement_magnitudes=True,
+                audio_sampling_frequency=6000)
+
+    e = Experiment(get_model_B_b_instance,
+                   ff.FeatureFactory_AllRawData,
+                   X, y,
+                   window_width=window_width,
+                   window_overlap=window_overlap,
+                   name='ablation_model_B_b_validation',
+                   manage_sequences=True,
+                   use_raw_data=True,
+                   model_parameters_grid={'input_size_gyr': [(None, 30, 3)]})
 
     e.run()
 
@@ -219,6 +308,58 @@ def ablation_model_B_test():
         use_raw_data=True,
         model_parameters_grid={'input_size_acc': [(None, 30, 3)],
                                'input_size_gyr': [(None, 30, 3)]}
+    )
+
+    e.run()
+
+
+@experiment()
+def ablation_model_B_a_test():
+    """ Experiment with acc head on test data.
+    """
+    window_width = 0.3
+    window_overlap = 0.5
+    X, y = main(window_width=window_width,
+                window_overlap=window_overlap,
+                include_movement_magnitudes=True,
+                audio_sampling_frequency=6000)
+
+    e = PredictionExperiment(
+        get_model_B_a_instance,
+        ff.FeatureFactory_AllRawData,
+        X, y,
+        window_width=window_width,
+        window_overlap=window_overlap,
+        name='ablation_model_B_a_test',
+        manage_sequences=True,
+        use_raw_data=True,
+        model_parameters_grid={'input_size_acc': [(None, 30, 3)]}
+    )
+
+    e.run()
+
+
+@experiment()
+def ablation_model_B_b_test():
+    """ Experiment with gyr head on test data.
+    """
+    window_width = 0.3
+    window_overlap = 0.5
+    X, y = main(window_width=window_width,
+                window_overlap=window_overlap,
+                include_movement_magnitudes=True,
+                audio_sampling_frequency=6000)
+
+    e = PredictionExperiment(
+        get_model_B_b_instance,
+        ff.FeatureFactory_AllRawData,
+        X, y,
+        window_width=window_width,
+        window_overlap=window_overlap,
+        name='ablation_model_B_b_test',
+        manage_sequences=True,
+        use_raw_data=True,
+        model_parameters_grid={'input_size_gyr': [(None, 30, 3)]}
     )
 
     e.run()

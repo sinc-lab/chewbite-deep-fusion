@@ -35,7 +35,9 @@ class Experiment:
                  no_event_class='no-event',
                  manage_sequences=False,
                  model_parameters_grid={},
-                 use_raw_data=False):
+                 use_raw_data=False,
+                 quantization=None,
+                 data_augmentation=False):
         self.timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
         self.model_factory = model_factory
         self.features_factory = features_factory
@@ -51,6 +53,8 @@ class Experiment:
         self.model_parameters_grid = model_parameters_grid
         self.use_raw_data = use_raw_data
         self.train_validation_segments = []
+        self.quantization = quantization
+        self.data_augmentation = data_augmentation
 
         # Create path for experiment if needed.
         self.path = os.path.join(settings.experiments_path, name, self.timestamp)
@@ -152,6 +156,65 @@ class Experiment:
                     X_train.extend(self.X[train_signal_key])
                     y_train.extend(self.y[train_signal_key])
 
+            if self.data_augmentation:
+                from augly.audio import functional
+                # Compute classes distribution.
+                all_y = []
+                n_labels = 0
+                for i_file in range(len(X_train)):
+                    for i_window in range(len(X_train[i_file])):
+                        if y_train[i_file][i_window] != 'no-event':
+                            all_y.append(y_train[i_file][i_window])
+                            n_labels += 1
+                unique, counts = np.unique(all_y, return_counts=True)
+                classes_probs = dict(zip(unique, counts / n_labels))
+
+                # Create a copy of all training samples.
+                import copy
+                X_augmented = copy.deepcopy(X_train)
+                y_augmented = copy.deepcopy(y_train)
+
+                for i_file in range(len(X_train)):
+                    during_event = False
+                    discard_event = False
+                    for i_window in range(len(X_train[i_file])):
+                        window_label = y_train[i_file][i_window]
+                        
+                        if window_label == 'no-event':
+                            during_event = False
+                            discard_event = False
+                        elif not during_event and window_label not in ['no-event',
+                                                                       'bite',
+                                                                       'rumination-chew']:
+                            during_event = True
+                            # If the windows correspond to a selected event to discard
+                            # from a majority class, select it to make zero values and 'no-event'.
+                            if np.random.rand() <= classes_probs[window_label] * 2:
+                                discard_event = True
+
+                        if during_event and discard_event:
+                            for i_channel in range(len(X_train[i_file][i_window])):
+                                window_len = len(X_augmented[i_file][i_window][i_channel])
+                                X_augmented[i_file][i_window][i_channel] = np.zeros(window_len)
+                                y_augmented[i_file][i_window] = 'no-event'
+                        else:
+                            for i_channel in range(len(X_train[i_file][i_window])):
+                                if i_channel == 0:
+                                    sample_rate = 6000
+                                else:
+                                    sample_rate = 100
+
+                                window = X_augmented[i_file][i_window][i_channel]
+                                X_augmented[i_file][i_window][i_channel] = \
+                                    functional.add_background_noise(window,
+                                                                    sample_rate,
+                                                                    snr_level_db=20)[0]
+                logger.info('Applying data augmentation !')
+                logger.info(len(X_train))
+                X_train.extend(X_augmented)
+                y_train.extend(y_augmented)
+                logger.info(len(X_train))
+
             # Create label encoder and fit with unique values.
             self.target_encoder = LabelEncoder()
 
@@ -175,6 +238,13 @@ class Experiment:
                             self.movement_sampling_frequency,
                             self.use_raw_data)
             funnel.fit(X_train, y_train_enc)
+
+            if self.quantization:
+                for ix_layer, layer in enumerate(funnel.model.model.layers):
+                    w = layer.get_weights()
+                    w = [i.astype(self.quantization) for i in w]
+                    funnel.model.model.layers[ix_layer].set_weights(w)
+                logger.info('quantization applied correctly !', str(self.quantization))
 
             for test_signal_key in test_fold_keys:
                 if self.manage_sequences:

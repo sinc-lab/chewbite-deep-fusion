@@ -394,6 +394,230 @@ class DeepFusionAblationB(AblationBase):
         return y_pred
 
 
+class DeepFusionAblationB_a(AblationBase):
+    ''' Ablation model based on DeepFusionFeatureLevel_m6, only acc head. '''
+    def __init__(self,
+                 batch_size=5,
+                 input_size_acc=(None,
+                                 30,
+                                 3),
+                 output_size=5,
+                 n_epochs=1400,
+                 training_reshape=False,
+                 set_sample_weights=True,
+                 feature_scaling=True):
+        ''' Create network instance. '''
+        self.classes_ = None
+        self.padding_class = None
+
+        self.batch_size = batch_size
+        self.n_epochs = n_epochs
+        self.data_format = 'channels_last'
+        self.conv_layers_padding = "valid"
+        self.training_reshape = training_reshape
+        self.set_sample_weights = set_sample_weights
+        dropout_rate = 0.0
+        self.input_size_acc = input_size_acc
+
+        # Acc head
+        acc_input = Input(shape=input_size_acc)
+
+        acc_cnn = Sequential()
+        acc_cnn.add(layers.BatchNormalization(axis=-1))
+        acc_cnn.add(layers.Conv1D(filters=64,
+                                  kernel_size=3,
+                                  strides=1,
+                                  activation=activations.relu,
+                                  padding=self.conv_layers_padding,
+                                  data_format=self.data_format))
+        acc_cnn.add(layers.Conv1D(filters=64,
+                                  kernel_size=3,
+                                  strides=1,
+                                  activation=activations.relu,
+                                  padding=self.conv_layers_padding,
+                                  data_format=self.data_format))
+        acc_cnn.add(layers.Dropout(rate=dropout_rate))
+        acc_cnn.add(layers.MaxPooling1D(2))
+        acc_cnn.add(layers.Flatten())
+
+        acc_x = layers.TimeDistributed(acc_cnn)(acc_input)
+
+        rnn = layers.Bidirectional(layers.GRU(256,
+                                              activation=activations.relu,
+                                              return_sequences=True,
+                                              dropout=dropout_rate))(acc_x)
+
+        dense = Sequential()
+        dense.add(Dense(256, activation='relu'))
+        dense.add(layers.Dropout(rate=dropout_rate))
+        dense.add(Dense(128, activation='relu'))
+        dense.add(layers.Dropout(rate=dropout_rate))
+        dense.add(Dense(64, activation='relu'))
+        dense.add(layers.Dropout(rate=dropout_rate))
+
+        dense_td_model = layers.TimeDistributed(dense)(rnn)
+        output = Dense(output_size, activation=activations.softmax)(dense_td_model)
+
+        model = Model(inputs=acc_input, outputs=output)
+        model.compile(optimizer=Adagrad(),
+                      loss='sparse_categorical_crossentropy',
+                      weighted_metrics=['accuracy'])
+
+        self.model = model
+        self.weights_ = copy.deepcopy(model.get_weights())
+
+    def fit(self, X, y):
+        ''' Train network based on given data. '''
+        self.classes_ = list(set(np.concatenate(y)))
+
+        self.padding_class = len(self.classes_)
+
+        X_acc, _, _, y = self._preprocess(X, y, training=True)
+
+        model_callbacks = [
+            tf.keras.callbacks.EarlyStopping(patience=150),
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=os.path.join(self.output_path_model_checkpoints,
+                                      'model.tf'),
+                save_best_only=True),
+            tf.keras.callbacks.TensorBoard(log_dir=self.output_logs_path)
+        ]
+
+        # Get sample weights if needed.
+        sample_weights = None
+        if self.set_sample_weights:
+            sample_weights = self._get_samples_weights(y)
+
+        self.model.fit(x=X_acc,
+                       y=y,
+                       epochs=self.n_epochs,
+                       verbose=1,
+                       batch_size=self.batch_size,
+                       validation_split=0.2,
+                       shuffle=True,
+                       sample_weight=sample_weights,
+                       callbacks=model_callbacks)
+
+    def predict(self, X):
+        X_acc, _, _, _ = self._preprocess(X)
+
+        y_pred = self.model.predict(X_acc).argmax(axis=-1)
+
+        return y_pred
+
+
+class DeepFusionAblationB_b(AblationBase):
+    ''' Ablation model based on DeepFusionFeatureLevel_m6, only gyr head. '''
+    def __init__(self,
+                 batch_size=5,
+                 input_size_gyr=(None,
+                                 30,
+                                 3),
+                 output_size=5,
+                 n_epochs=1400,
+                 training_reshape=False,
+                 set_sample_weights=True,
+                 feature_scaling=True):
+        ''' Create network instance. '''
+        self.classes_ = None
+        self.padding_class = None
+
+        self.batch_size = batch_size
+        self.n_epochs = n_epochs
+        self.data_format = 'channels_last'
+        self.conv_layers_padding = "valid"
+        self.training_reshape = training_reshape
+        self.set_sample_weights = set_sample_weights
+        dropout_rate = 0.0
+        self.input_size_gyr = input_size_gyr
+
+        # Gyr head
+        gyr_input = Input(shape=input_size_gyr)
+
+        gyr_cnn = Sequential()
+        gyr_cnn.add(layers.BatchNormalization(axis=-1))
+        gyr_cnn.add(layers.Conv1D(filters=64,
+                                  kernel_size=3,
+                                  strides=1,
+                                  activation=activations.relu,
+                                  padding=self.conv_layers_padding,
+                                  data_format=self.data_format))
+        gyr_cnn.add(layers.Conv1D(filters=64,
+                                  kernel_size=3,
+                                  strides=1,
+                                  activation=activations.relu,
+                                  padding=self.conv_layers_padding,
+                                  data_format=self.data_format))
+        gyr_cnn.add(layers.Dropout(rate=dropout_rate))
+        gyr_cnn.add(layers.MaxPooling1D(2))
+        gyr_cnn.add(layers.Flatten())
+
+        gyr_x = layers.TimeDistributed(gyr_cnn)(gyr_input)
+
+        rnn = layers.Bidirectional(layers.GRU(256,
+                                              activation=activations.relu,
+                                              return_sequences=True,
+                                              dropout=dropout_rate))(gyr_x)
+
+        dense = Sequential()
+        dense.add(Dense(256, activation='relu'))
+        dense.add(layers.Dropout(rate=dropout_rate))
+        dense.add(Dense(128, activation='relu'))
+        dense.add(layers.Dropout(rate=dropout_rate))
+        dense.add(Dense(64, activation='relu'))
+        dense.add(layers.Dropout(rate=dropout_rate))
+
+        dense_td_model = layers.TimeDistributed(dense)(rnn)
+        output = Dense(output_size, activation=activations.softmax)(dense_td_model)
+
+        model = Model(inputs=gyr_input, outputs=output)
+        model.compile(optimizer=Adagrad(),
+                      loss='sparse_categorical_crossentropy',
+                      weighted_metrics=['accuracy'])
+
+        self.model = model
+        self.weights_ = copy.deepcopy(model.get_weights())
+
+    def fit(self, X, y):
+        ''' Train network based on given data. '''
+        self.classes_ = list(set(np.concatenate(y)))
+
+        self.padding_class = len(self.classes_)
+
+        _, X_gyr, _, y = self._preprocess(X, y, training=True)
+
+        model_callbacks = [
+            tf.keras.callbacks.EarlyStopping(patience=150),
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=os.path.join(self.output_path_model_checkpoints,
+                                      'model.tf'),
+                save_best_only=True),
+            tf.keras.callbacks.TensorBoard(log_dir=self.output_logs_path)
+        ]
+
+        # Get sample weights if needed.
+        sample_weights = None
+        if self.set_sample_weights:
+            sample_weights = self._get_samples_weights(y)
+
+        self.model.fit(x=X_gyr,
+                       y=y,
+                       epochs=self.n_epochs,
+                       verbose=1,
+                       batch_size=self.batch_size,
+                       validation_split=0.2,
+                       shuffle=True,
+                       sample_weight=sample_weights,
+                       callbacks=model_callbacks)
+
+    def predict(self, X):
+        _, X_gyr, _, _ = self._preprocess(X)
+
+        y_pred = self.model.predict(X_gyr).argmax(axis=-1)
+
+        return y_pred
+
+
 class DeepFusionAblationC(AblationBase):
     ''' Ablation model based on DeepFusionFeatureLevel_m6, without RNN part. '''
     def __init__(self,
